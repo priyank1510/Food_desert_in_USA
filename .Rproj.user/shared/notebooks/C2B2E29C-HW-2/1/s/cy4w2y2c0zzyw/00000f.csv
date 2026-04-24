@@ -1,0 +1,6 @@
+"0","ncaa_sports <- ncaa_gendered %>%"
+"0","  mutate(sport = str_remove(sport_name, ""Men's ""),"
+"0","         sport = str_remove(sport, ""Women's ""))"
+"0",""
+"0","# Check the result"
+"0","head(ncaa_sports, 10)"

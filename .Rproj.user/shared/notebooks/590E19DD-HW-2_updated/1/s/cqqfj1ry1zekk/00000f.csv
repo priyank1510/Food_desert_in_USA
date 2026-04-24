@@ -1,0 +1,7 @@
+"0","# Primary source: USDA ERS Food Access Research Atlas (2019 release)"
+"0","# Note: the CSV uses the literal string ""NULL"" for missing values"
+"0","df_raw <- read_csv(""Food Access Research Atlas.csv"","
+"0","                   na = ""NULL"","
+"0","                   show_col_types = FALSE)"
+"0",""
+"0","head(df_raw, 10)"

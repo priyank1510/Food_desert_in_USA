@@ -1,0 +1,49 @@
+"0","# Calculate mean APR by sport and gender to identify similar sports"
+"0","apr_comparison = ncaa_sports_both %>%"
+"0","  group_by(sport, gender) %>%"
+"0","  summarize(mean_APR = mean(APR, na.rm = TRUE), .groups = ""drop"") %>%"
+"0","  pivot_wider(names_from = gender, values_from = mean_APR) %>%"
+"0","  mutate("
+"0","    difference = abs(`Women's` - `Men's`),"
+"0","    women_higher = `Women's` > `Men's`"
+"0","  ) %>%"
+"0","  arrange(difference)"
+"0",""
+"0","# Show sports ranked by similarity"
+"0","print(apr_comparison, n = 20)"
+"1","[38;5;246m# A tibble: 15 × 5[39m
+"
+"1","   sport          `Men's` `Women's` difference women_higher
+"
+"1","   [3m[38;5;246m<chr>[39m[23m            [3m[38;5;246m<dbl>[39m[23m     [3m[38;5;246m<dbl>[39m[23m      [3m[38;5;246m<dbl>[39m[23m [3m[38;5;246m<lgl>[39m[23m       
+"
+"1","[38;5;250m 1[39m Volleyball        975.      977.       2.15 TRUE        
+"
+"1","[38;5;250m 2[39m Water Polo        977.      979.       2.35 TRUE        
+"
+"1","[38;5;250m 3[39m Fencing           979.      984.       5.01 TRUE        
+"
+"1","[38;5;250m 4[39m Ice Hockey        978.      985.       6.55 TRUE        
+"
+"1","[38;5;250m 5[39m Gymnastics        979.      987.       7.87 TRUE        
+"
+"1","[38;5;250m 6[39m Skiing            973.      982.       8.34 TRUE        
+"
+"1","[38;5;250m 7[39m Tennis            971.      979.       8.37 TRUE        
+"
+"1","[38;5;250m 8[39m Cross Country     970.      979.       8.94 TRUE        
+"
+"1","[38;5;250m 9[39m Swimming          973.      984.      10.5  TRUE        
+"
+"1","[38;5;250m10[39m Golf              971.      981.      10.8  TRUE        
+"
+"1","[38;5;250m11[39m Track, Outdoor    962.      974.      11.9  TRUE        
+"
+"1","[38;5;250m12[39m Track, Indoor     960.      973.      12.1  TRUE        
+"
+"1","[38;5;250m13[39m Lacrosse          973.      987.      13.5  TRUE        
+"
+"1","[38;5;250m14[39m Soccer            964.      978.      14.2  TRUE        
+"
+"1","[38;5;250m15[39m Basketball        946.      968.      22.1  TRUE        
+"

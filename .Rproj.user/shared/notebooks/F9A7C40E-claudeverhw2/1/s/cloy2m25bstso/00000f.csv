@@ -1,0 +1,7 @@
+"0","data <- data %>%"
+"0","  mutate("
+"0","    pct_no_vehicle = if_else(OHU2010 > 0,"
+"0","                             pmin(TractHUNV / OHU2010 * 100, 100), NA_real_),"
+"0","    pct_snap       = if_else(OHU2010 > 0,"
+"0","                             pmin(TractSNAP / OHU2010 * 100, 100), NA_real_)"
+"0","  )"

@@ -1,0 +1,6 @@
+"0","# Null are the missing data values. "
+"0","data <- read_csv(""Food Access Research Atlas.csv"", na = c(""NULL"", ""NA""),"
+"0","               show_col_types = FALSE)"
+"0",""
+"0","# Checking the first 10 values of the dataset. "
+"0","head(data, 10)"

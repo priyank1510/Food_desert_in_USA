@@ -1,0 +1,6 @@
+"0","# Extract just the year number from year_col"
+"0","ncaa_with_year <- ncaa_long %>%"
+"0","  mutate(Year = as.integer(str_sub(year_col, 10, 13)))"
+"0",""
+"0","# Check it worked"
+"0","head(ncaa_with_year, 10)"

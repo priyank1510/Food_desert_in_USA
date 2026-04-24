@@ -1,0 +1,4 @@
+"0","library(tidyverse)"
+"0","# reading the tab seperated dataset"
+"0","# considering the  -9 , -99,-999, . ,  as missing data according to the codebook."
+"0","ncaa = read_tsv(""26801-0001-Data.tsv"", na = c("""", ""NA"", ""."", ""-9"", ""-99"", ""-999""))"

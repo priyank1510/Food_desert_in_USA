@@ -1,0 +1,8 @@
+"0","# Import the USDA Food Access Research Atlas dataset"
+"0","# ""NULL"" strings in the file represent missing data"
+"0","data <- read_csv(""Food Access Research Atlas.csv"","
+"0","                 na = ""NULL"","
+"0","                 show_col_types = FALSE)"
+"0",""
+"0","# Display first 10 rows"
+"0","head(data, 10)"

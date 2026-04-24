@@ -1,0 +1,754 @@
+---
+title: "The Invisible Hunger Map: How 39 Million Americans Live in Food Deserts"
+subtitle: "A Data Story Using the USDA Food Access Research Atlas (2019)"
+author: "Priyank"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: show
+    fig_width: 10
+    fig_height: 6
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  fig.width = 10,
+  fig.height = 6
+)
+```
+
+# Introduction
+
+Imagine stepping outside your door and the nearest grocery store with fresh produce is over a mile away — and you do not own a car. For nearly **39 million Americans**, this is not a thought experiment; it is daily life. The USDA calls these neighborhoods **"food deserts"**: census tracts that are both low-income and far from a supermarket.
+
+This analysis uses the **USDA Economic Research Service's Food Access Research Atlas** (2019 release), which maps food access indicators across **72,531 census tracts** in all 50 states, Washington D.C., and U.S. territories. The dataset combines 2010 Census population data with 2015 supermarket location data to flag tracts where residents face barriers to accessing healthy food.
+
+**Why this dataset?** Food access is one of those problems that hides in plain sight. We hear about hunger in abstract statistics, but rarely see *where* it concentrates, *who* it affects disproportionately, and what surprising factors — like car ownership — amplify the crisis. This data story aims to uncover those non-obvious patterns.
+
+**Source:** USDA Economic Research Service — [Food Access Research Atlas](https://www.ers.usda.gov/data-products/food-access-research-atlas/)
+Downloaded from: [https://catalog.data.gov/dataset](https://catalog.data.gov/dataset) (U.S. Government Open Data)
+
+---
+
+# Chapter 1: Loading and Preparing the Data
+
+```{r load-libraries}
+# Install any missing packages (uncomment if needed)
+# install.packages(c("tidyverse", "scales", "patchwork", "viridis", "ggridges", "treemapify"))
+
+library(tidyverse)
+library(scales)
+library(patchwork)   # combining plots side-by-side
+library(viridis)     # colorblind-friendly palettes
+library(ggridges)    # ridge/joy plots
+library(treemapify)  # treemap geom for ggplot
+
+# Set a clean global theme
+theme_set(theme_minimal(base_size = 13) +
+            theme(
+              plot.title    = element_text(face = "bold", size = 15),
+              plot.subtitle = element_text(color = "grey40", size = 11),
+              plot.caption  = element_text(color = "grey60", size = 9)
+            ))
+```
+
+```{r load-data}
+# Load the USDA Food Access Research Atlas CSV
+# "NULL" strings in the file represent missing data
+df <- read_csv("Food Access Research Atlas.csv", na = "NULL",
+               show_col_types = FALSE)
+
+cat("Rows:", nrow(df), "\n")
+cat("Columns:", ncol(df), "\n")
+glimpse(df)
+```
+
+The dataset contains **`r format(nrow(df), big.mark = ",")`** census tracts with **`r ncol(df)`** variables covering population demographics, poverty rates, supermarket distance measures, vehicle access, SNAP benefit usage, and racial/ethnic breakdowns.
+
+**Key variable definitions used in this analysis:**
+
+| Variable | Meaning |
+|---|---|
+| `LILATracts_1And10` | **Food desert flag** — 1 if tract is low-income AND nearest supermarket is >1 mile (urban) or >10 miles (rural) |
+| `PovertyRate` | % of tract population below the federal poverty line |
+| `MedianFamilyIncome` | Median family income in the tract |
+| `Urban` | 1 = urban tract, 0 = rural tract |
+| `TractHUNV` | Count of housing units without a vehicle |
+| `TractSNAP` | Count of housing units receiving SNAP (food stamp) benefits |
+| `lapophalf`, `lapop1`, `lapop10`, `lapop20` | Population count beyond 1/2, 1, 10, or 20 miles from a supermarket |
+
+```{r data-prep}
+# Create derived columns for analysis
+# Guard against division by zero: OHU2010 == 0 in 106 tracts
+# Cap pct_no_vehicle at 100 because 52 tracts have TractHUNV > OHU2010
+df <- df %>%
+  mutate(
+    food_desert    = factor(LILATracts_1And10,
+                            levels = c(0, 1),
+                            labels = c("Not Food Desert", "Food Desert")),
+    area_type      = factor(Urban,
+                            levels = c(0, 1),
+                            labels = c("Rural", "Urban")),
+    poverty_bin    = cut(PovertyRate,
+                         breaks = c(0, 10, 20, 30, 50, 100),
+                         labels = c("0-10%", "10-20%", "20-30%", "30-50%", "50%+"),
+                         include.lowest = TRUE),
+    income_bin     = cut(MedianFamilyIncome,
+                         breaks = c(0, 35000, 50000, 75000, 100000, Inf),
+                         labels = c("<$35K", "$35-50K", "$50-75K", "$75-100K", "$100K+"),
+                         include.lowest = TRUE),
+    # Safe percentage calculations — guard OHU2010 == 0 and cap at 100
+    pct_no_vehicle = if_else(OHU2010 > 0,
+                             pmin(TractHUNV / OHU2010 * 100, 100),
+                             NA_real_),
+    pct_snap       = if_else(OHU2010 > 0,
+                             pmin(TractSNAP / OHU2010 * 100, 100),
+                             NA_real_),
+    pct_kids       = if_else(Pop2010 > 0,
+                             TractKids / Pop2010 * 100,
+                             NA_real_),
+    pct_seniors    = if_else(Pop2010 > 0,
+                             TractSeniors / Pop2010 * 100,
+                             NA_real_),
+    pct_black      = if_else(Pop2010 > 0,
+                             TractBlack / Pop2010 * 100,
+                             NA_real_),
+    pct_hispanic   = if_else(Pop2010 > 0,
+                             TractHispanic / Pop2010 * 100,
+                             NA_real_),
+    pct_white      = if_else(Pop2010 > 0,
+                             TractWhite / Pop2010 * 100,
+                             NA_real_),
+    pct_aian       = if_else(Pop2010 > 0,
+                             TractAIAN / Pop2010 * 100,
+                             NA_real_)
+  )
+
+# Store key summary values for reuse
+total_pop  <- sum(df$Pop2010, na.rm = TRUE)
+fd_pop     <- sum(df$Pop2010[df$LILATracts_1And10 == 1], na.rm = TRUE)
+fd_tracts  <- sum(df$LILATracts_1And10, na.rm = TRUE)
+
+cat("Total US population (2010 Census):", format(total_pop, big.mark = ","), "\n")
+cat("Population in food deserts:", format(fd_pop, big.mark = ","), "\n")
+cat("Food desert tracts:", format(fd_tracts, big.mark = ","),
+    "out of", format(nrow(df), big.mark = ","), "\n")
+```
+
+---
+
+# Chapter 2: The Scale of the Problem
+
+Before we dig into patterns, let's feel the *weight* of the numbers. How many tracts, and how many people, are we talking about?
+
+```{r plot1-scale, fig.width = 12, fig.height = 5}
+# --- Panel A: Tract counts ---
+p1 <- df %>%
+  count(food_desert) %>%
+  ggplot(aes(x = food_desert, y = n, fill = food_desert)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = format(n, big.mark = ",")),
+            vjust = -0.5, fontface = "bold", size = 4.5) +
+  scale_fill_manual(values = c("Not Food Desert" = "#3498db",
+                                "Food Desert"     = "#e74c3c")) +
+  scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.15))) +
+  labs(title    = "1 in 8 Census Tracts Is a Food Desert",
+       subtitle = paste0(format(fd_tracts, big.mark = ","), " of ",
+                         format(nrow(df), big.mark = ","),
+                         " tracts lack adequate grocery access"),
+       x = NULL, y = "Number of Census Tracts") +
+  theme(legend.position = "none")
+
+# --- Panel B: Population donut ---
+pop_df <- tibble(
+  category = c("Rest of US", "Food Desert Residents"),
+  pop      = c(total_pop - fd_pop, fd_pop)
+)
+
+p2 <- ggplot(pop_df, aes(x = 2, y = pop, fill = category)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  xlim(0.5, 2.5) +
+  scale_fill_manual(values = c("Rest of US" = "#3498db",
+                                "Food Desert Residents" = "#e74c3c")) +
+  labs(title    = "~39 Million People Live in Food Deserts",
+       subtitle = paste0(round(fd_pop / total_pop * 100, 1),
+                         "% of the US population"),
+       fill = NULL) +
+  theme_void(base_size = 13) +
+  theme(plot.title    = element_text(face = "bold", size = 15),
+        plot.subtitle = element_text(color = "grey40", size = 11),
+        legend.position = "bottom")
+
+p1 + p2 +
+  plot_annotation(
+    caption = "Source: USDA Food Access Research Atlas (2019)"
+  )
+```
+
+**Finding:** About **12.8% of all census tracts** — home to roughly **39 million people** — qualify as food deserts. That is more than the entire population of Canada living in neighborhoods where fresh groceries are structurally out of reach.
+
+---
+
+# Chapter 3: The Urban Surprise — Cities Have More Food Deserts Than Rural Areas
+
+The phrase "food desert" conjures images of empty rural landscapes. The data tells a very different story.
+
+```{r plot2-urban-rural, fig.width = 12, fig.height = 5}
+urban_rural_summary <- df %>%
+  group_by(area_type) %>%
+  summarise(
+    total_tracts = n(),
+    fd_tracts    = sum(LILATracts_1And10, na.rm = TRUE),
+    fd_rate      = fd_tracts / total_tracts * 100,
+    fd_pop       = sum(Pop2010[LILATracts_1And10 == 1], na.rm = TRUE),
+    .groups = "drop"
+  )
+
+p3 <- ggplot(urban_rural_summary, aes(x = area_type, y = fd_rate, fill = area_type)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = paste0(round(fd_rate, 1), "%")),
+            vjust = -0.5, fontface = "bold", size = 5) +
+  scale_fill_manual(values = c("Rural" = "#27ae60", "Urban" = "#8e44ad")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(title    = "Urban Tracts Are Nearly Twice as Likely to Be Food Deserts",
+       subtitle = "% of tracts classified as food deserts by type",
+       x = NULL, y = "Food Desert Rate (%)") +
+  theme(legend.position = "none")
+
+p4 <- ggplot(urban_rural_summary, aes(x = area_type, y = fd_pop / 1e6, fill = area_type)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = paste0(round(fd_pop / 1e6, 1), "M")),
+            vjust = -0.5, fontface = "bold", size = 5) +
+  scale_fill_manual(values = c("Rural" = "#27ae60", "Urban" = "#8e44ad")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(title    = "Urban Food Deserts Affect 6x More People",
+       subtitle = "Population living in food desert tracts",
+       x = NULL, y = "Population (Millions)") +
+  theme(legend.position = "none")
+
+p3 + p4 +
+  plot_annotation(
+    caption = "Source: USDA Food Access Research Atlas (2019)"
+  )
+```
+
+**Finding:** **Urban tracts have a 14.4% food desert rate** compared to just 7.8% for rural tracts. In absolute numbers, over **33 million** food desert residents live in urban areas. Why? Many low-income urban neighborhoods lost their grocery stores to suburban migration, leaving dense populations stranded without walkable food access.
+
+---
+
+# Chapter 4: The State-Level Geography — A Southern Belt Emerges
+
+Which states carry the heaviest burden? The answer maps onto deeper patterns of historical inequality.
+
+```{r plot3-states, fig.width = 12, fig.height = 8}
+state_summary <- df %>%
+  group_by(State) %>%
+  summarise(
+    total_tracts = n(),
+    fd_tracts    = sum(LILATracts_1And10, na.rm = TRUE),
+    fd_rate      = fd_tracts / total_tracts * 100,
+    mean_poverty = mean(PovertyRate, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Top and bottom 15
+top15 <- state_summary %>% slice_max(fd_rate, n = 15)
+bot15 <- state_summary %>% slice_min(fd_rate, n = 15)
+
+bind_rows(
+  top15 %>% mutate(group = "Highest Food Desert Rate"),
+  bot15 %>% mutate(group = "Lowest Food Desert Rate")
+) %>%
+  ggplot(aes(x = reorder(State, fd_rate), y = fd_rate, fill = group)) +
+  geom_col() +
+  geom_text(aes(label = paste0(round(fd_rate, 1), "%")),
+            hjust = -0.1, size = 3.2) +
+  coord_flip() +
+  facet_wrap(~ group, scales = "free_y") +
+  scale_fill_manual(values = c("Highest Food Desert Rate" = "#c0392b",
+                                "Lowest Food Desert Rate"  = "#2980b9")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.25))) +
+  labs(title    = "Food Deserts Concentrate in the Deep South and Southwest",
+       subtitle = "% of census tracts classified as food deserts, by state",
+       x = NULL, y = "Food Desert Rate (%)",
+       caption  = "Source: USDA Food Access Research Atlas (2019)") +
+  theme(legend.position = "none",
+        strip.text = element_text(face = "bold", size = 12))
+```
+
+**Finding:** **Mississippi leads at 31.6%** — nearly 1 in 3 tracts is a food desert. The top tier is dominated by Southern states (MS, AR, LA, AL, GA, SC) plus New Mexico and Alaska. States like New Hampshire, Connecticut, and Hawaii sit below 5%. This geographic clustering mirrors patterns of historical disinvestment, persistent poverty, and racial segregation.
+
+---
+
+# Chapter 5: The Poverty Trap — Income as the Strongest Predictor
+
+How tight is the link between poverty and food access?
+
+```{r plot4-poverty-density, fig.width = 11, fig.height = 6}
+df %>%
+  filter(!is.na(PovertyRate)) %>%
+  ggplot(aes(x = PovertyRate, fill = food_desert)) +
+  geom_density(alpha = 0.6, color = NA) +
+  scale_fill_manual(values = c("Not Food Desert" = "#3498db",
+                                "Food Desert"     = "#e74c3c")) +
+  geom_vline(xintercept = 20, linetype = "dashed", color = "grey30") +
+  annotate("text", x = 22, y = 0.055, label = "20% poverty line",
+           hjust = 0, color = "grey30", size = 3.5) +
+  labs(title    = "Food Deserts Cluster in High-Poverty Tracts",
+       subtitle = "Density distribution of tract poverty rates by food desert status",
+       x = "Tract Poverty Rate (%)", y = "Density", fill = NULL,
+       caption  = "Source: USDA Food Access Research Atlas (2019)") +
+  theme(legend.position = "top")
+```
+
+```{r plot5-income-bar, fig.width = 10, fig.height = 5}
+df %>%
+  filter(!is.na(income_bin)) %>%
+  group_by(income_bin) %>%
+  summarise(fd_rate = mean(LILATracts_1And10, na.rm = TRUE) * 100,
+            .groups = "drop") %>%
+  ggplot(aes(x = income_bin, y = fd_rate, fill = fd_rate)) +
+  geom_col(width = 0.65) +
+  geom_text(aes(label = paste0(round(fd_rate, 1), "%")),
+            vjust = -0.5, fontface = "bold", size = 4.5) +
+  scale_fill_gradient(low = "#f39c12", high = "#c0392b") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(title    = "The Income Cliff: Low-Income Tracts Are 10x More Likely to Be Food Deserts",
+       subtitle = "Food desert rate by median family income bracket",
+       x = "Median Family Income", y = "% Tracts That Are Food Deserts",
+       caption  = "Source: USDA Food Access Research Atlas (2019)") +
+  theme(legend.position = "none")
+```
+
+**Finding:** The density curves show two distinct populations. Food desert tracts have a mean poverty rate of **24.4%** versus **13.8%** for non-food-desert tracts. Tracts with median income under \$35K have a food desert rate roughly **10 times higher** than tracts above \$100K. Poverty does not just correlate with food deserts — it practically defines them.
+
+---
+
+# Chapter 6: The Car Equation — No Vehicle, No Food
+
+Here is where the story gets uniquely interesting. Many assume everyone has a car. The data shows what happens when that assumption fails.
+
+```{r plot6-vehicle-scatter, fig.width = 11, fig.height = 6}
+df %>%
+  filter(!is.na(pct_no_vehicle), pct_no_vehicle <= 60) %>%
+  ggplot(aes(x = pct_no_vehicle, y = PovertyRate, color = food_desert)) +
+  geom_point(alpha = 0.12, size = 0.8) +
+  geom_smooth(method = "loess", se = TRUE, linewidth = 1.2) +
+  scale_color_manual(values = c("Not Food Desert" = "#3498db",
+                                 "Food Desert"     = "#e74c3c")) +
+  labs(title    = "The Double Bind: No Car + Poverty = Food Desert",
+       subtitle = "Each dot is a census tract; food deserts cluster where car-lessness AND poverty are both high",
+       x = "% Housing Units Without a Vehicle",
+       y = "Poverty Rate (%)", color = NULL,
+       caption  = "Source: USDA Food Access Research Atlas (2019)") +
+  theme(legend.position = "top")
+```
+
+```{r plot7-vehicle-bar, fig.width = 10, fig.height = 5}
+df %>%
+  filter(!is.na(pct_no_vehicle)) %>%
+  mutate(vehicle_bin = cut(pct_no_vehicle,
+                           breaks = c(-1, 5, 15, 30, 100),
+                           labels = c("0-5%", "5-15%", "15-30%", "30%+"))) %>%
+  filter(!is.na(vehicle_bin)) %>%
+  group_by(vehicle_bin) %>%
+  summarise(fd_rate = mean(LILATracts_1And10, na.rm = TRUE) * 100,
+            .groups = "drop") %>%
+  ggplot(aes(x = vehicle_bin, y = fd_rate, fill = fd_rate)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = paste0(round(fd_rate, 1), "%")),
+            vjust = -0.5, fontface = "bold", size = 4.5) +
+  scale_fill_gradient(low = "#f1c40f", high = "#c0392b") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(title    = "Without a Car, Food Desert Risk Quadruples",
+       subtitle = "Food desert rate by % of housing units lacking vehicle access",
+       x = "% Housing Units Without a Vehicle",
+       y = "% Tracts That Are Food Deserts",
+       caption  = "Source: USDA Food Access Research Atlas (2019)") +
+  theme(legend.position = "none")
+```
+
+**Finding:** The scatter plot shows food desert tracts (red) occupying the upper-right quadrant where both poverty and car-lessness converge. Tracts where >30% of households lack a car have a food desert rate roughly **4 times higher** than tracts where nearly everyone has a car. In rural areas, no car means the nearest grocery store might as well be on another continent. In cities, it means walking miles through neighborhoods that lack transit connections to a supermarket.
+
+---
+
+# Chapter 7: Racial Disparities in Food Access
+
+Food deserts do not affect all communities equally. This is perhaps the most important finding.
+
+```{r plot8-racial-bars, fig.width = 11, fig.height = 6}
+# Compare racial composition of food deserts vs. national average
+# NOTE: Hispanic is an ethnicity that overlaps with race categories.
+# We include it as a separate comparison but note the overlap.
+race_comparison <- tibble(
+  Group = c("White", "Black", "Hispanic*", "Asian",
+            "Am. Indian / Alaska Native"),
+  FD_Share = c(
+    sum(df$TractWhite[df$LILATracts_1And10 == 1], na.rm = TRUE) / fd_pop * 100,
+    sum(df$TractBlack[df$LILATracts_1And10 == 1], na.rm = TRUE) / fd_pop * 100,
+    sum(df$TractHispanic[df$LILATracts_1And10 == 1], na.rm = TRUE) / fd_pop * 100,
+    sum(df$TractAsian[df$LILATracts_1And10 == 1], na.rm = TRUE) / fd_pop * 100,
+    sum(df$TractAIAN[df$LILATracts_1And10 == 1], na.rm = TRUE) / fd_pop * 100
+  ),
+  National_Share = c(
+    sum(df$TractWhite, na.rm = TRUE) / total_pop * 100,
+    sum(df$TractBlack, na.rm = TRUE) / total_pop * 100,
+    sum(df$TractHispanic, na.rm = TRUE) / total_pop * 100,
+    sum(df$TractAsian, na.rm = TRUE) / total_pop * 100,
+    sum(df$TractAIAN, na.rm = TRUE) / total_pop * 100
+  )
+) %>%
+  mutate(Overrepresentation = round(FD_Share / National_Share, 2))
+
+race_long <- race_comparison %>%
+  pivot_longer(cols = c(FD_Share, National_Share),
+               names_to = "Context", values_to = "Pct") %>%
+  mutate(Context = recode(Context,
+                          "FD_Share"       = "In Food Deserts",
+                          "National_Share" = "National Average"))
+
+ggplot(race_long, aes(x = reorder(Group, -Pct), y = Pct, fill = Context)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.65) +
+  geom_text(aes(label = paste0(round(Pct, 1), "%")),
+            position = position_dodge(width = 0.7),
+            vjust = -0.5, size = 3.5) +
+  scale_fill_manual(values = c("In Food Deserts" = "#e74c3c",
+                                "National Average" = "#3498db")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(title    = "Black and Native American Communities Are Overrepresented in Food Deserts",
+       subtitle = "Racial/ethnic composition: food desert tracts vs. national population",
+       x = NULL, y = "Share of Population (%)", fill = NULL,
+       caption  = "*Hispanic is an ethnicity that can overlap with race categories.\nSource: USDA Food Access Research Atlas (2019)") +
+  theme(legend.position = "top")
+```
+
+```{r plot9-overrep-lollipop, fig.width = 10, fig.height = 5}
+ggplot(race_comparison,
+       aes(x = reorder(Group, Overrepresentation), y = Overrepresentation)) +
+  geom_segment(aes(xend = Group, y = 1, yend = Overrepresentation),
+               linewidth = 1.5, color = "grey50") +
+  geom_point(aes(color = if_else(Overrepresentation > 1,
+                                  "Overrepresented", "Underrepresented")),
+             size = 6) +
+  geom_text(aes(label = paste0(Overrepresentation, "x")),
+            hjust = -0.8, fontface = "bold", size = 4) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "grey40") +
+  coord_flip() +
+  scale_color_manual(values = c("Overrepresented"  = "#e74c3c",
+                                 "Underrepresented" = "#3498db")) +
+  scale_y_continuous(limits = c(0, 2.5)) +
+  labs(title    = "Overrepresentation Index: Who Bears the Burden?",
+       subtitle = "Ratio of food desert share to national population share (1.0 = proportional)",
+       x = NULL, y = "Overrepresentation Factor",
+       caption  = "Values > 1.0 indicate the group is overrepresented in food deserts.\nSource: USDA Food Access Research Atlas (2019)") +
+  theme(legend.position = "none")
+```
+
+**Finding:** **American Indian/Alaska Native communities are nearly 2x overrepresented** in food deserts relative to their national population share. **Black Americans are 1.75x overrepresented.** White and Asian populations are underrepresented. This reflects decades of redlining, disinvestment, and the well-documented "supermarket redlining" phenomenon, where grocery chains close stores in predominantly minority communities.
+
+---
+
+# Chapter 8: Children vs. Seniors — Who Is More Exposed?
+
+Food deserts don't just affect working-age adults. They hit the most vulnerable age groups — but not equally.
+
+```{r plot10-age-ridges, fig.width = 11, fig.height = 5}
+df %>%
+  filter(LILATracts_1And10 == 1,
+         !is.na(pct_kids), !is.na(pct_seniors)) %>%
+  select(CensusTract, pct_kids, pct_seniors) %>%
+  pivot_longer(cols = c(pct_kids, pct_seniors),
+               names_to = "age_group", values_to = "pct") %>%
+  mutate(age_group = recode(age_group,
+                            "pct_kids"    = "Children (0-17)",
+                            "pct_seniors" = "Seniors (65+)")) %>%
+  ggplot(aes(x = pct, y = age_group, fill = age_group)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2,
+                      quantile_lines = TRUE, quantiles = 2) +
+  scale_fill_manual(values = c("Children (0-17)" = "#e67e22",
+                                "Seniors (65+)"   = "#2c3e50")) +
+  labs(title    = "In Food Deserts, Children Outnumber Seniors 2-to-1",
+       subtitle = "Distribution of age group shares in food desert tracts (vertical line = median)",
+       x = "% of Tract Population", y = NULL,
+       caption  = "Source: USDA Food Access Research Atlas (2019)") +
+  theme(legend.position = "none")
+```
+
+```{r plot11-kids-seniors-scatter, fig.width = 10, fig.height = 6}
+df %>%
+  filter(!is.na(pct_kids), !is.na(pct_seniors), Pop2010 > 100) %>%
+  ggplot(aes(x = pct_kids, y = pct_seniors, color = food_desert)) +
+  geom_point(alpha = 0.08, size = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1.3) +
+  scale_color_manual(values = c("Not Food Desert" = "#3498db",
+                                 "Food Desert"     = "#e74c3c")) +
+  labs(title    = "Food Desert Tracts Skew Young: More Kids, Fewer Seniors",
+       subtitle = "Each dot is a tract; the red regression line shifts toward higher child share",
+       x = "% Children (0-17)", y = "% Seniors (65+)", color = NULL,
+       caption  = "Source: USDA Food Access Research Atlas (2019)") +
+  theme(legend.position = "top")
+```
+
+**Finding:** In food desert tracts, the **median child share (~25%)** is nearly double the **median senior share (~13%)**. This means food deserts disproportionately affect developing children — the age group most harmed by nutritional deficiency. Research links childhood food insecurity to poor academic performance, developmental delays, and chronic disease. Nearly **10 million children** live in food desert tracts.
+
+---
+
+# Chapter 9: The SNAP Paradox — Benefits Without Stores
+
+SNAP (food stamps) provides financial help to buy food. But what good are benefits when there is no nearby store to spend them?
+
+```{r plot12-snap-histogram, fig.width = 11, fig.height = 6}
+df %>%
+  filter(!is.na(pct_snap), pct_snap <= 80) %>%
+  ggplot(aes(x = pct_snap, fill = food_desert)) +
+  geom_histogram(position = "identity", alpha = 0.6, bins = 50, color = NA) +
+  scale_fill_manual(values = c("Not Food Desert" = "#3498db",
+                                "Food Desert"     = "#e74c3c")) +
+  labs(title    = "The SNAP Paradox: Higher Benefits, Fewer Stores",
+       subtitle = "Food desert tracts have much higher SNAP participation rates",
+       x = "% Housing Units Receiving SNAP Benefits",
+       y = "Number of Tracts", fill = NULL,
+       caption  = "Source: USDA Food Access Research Atlas (2019)") +
+  theme(legend.position = "top")
+```
+
+```{r plot13-snap-poverty-loess, fig.width = 10, fig.height = 6}
+df %>%
+  filter(!is.na(pct_snap), !is.na(PovertyRate), pct_snap <= 80) %>%
+  ggplot(aes(x = PovertyRate, y = pct_snap, color = food_desert)) +
+  geom_point(alpha = 0.08, size = 0.5) +
+  geom_smooth(method = "loess", se = TRUE, linewidth = 1.2) +
+  scale_color_manual(values = c("Not Food Desert" = "#3498db",
+                                 "Food Desert"     = "#e74c3c")) +
+  labs(title    = "At the Same Poverty Level, Food Deserts Have Higher SNAP Dependency",
+       subtitle = "LOESS curves show food desert tracts rely more on SNAP at every poverty rate",
+       x = "Poverty Rate (%)", y = "% Housing Units on SNAP", color = NULL,
+       caption  = "Source: USDA Food Access Research Atlas (2019)") +
+  theme(legend.position = "top")
+```
+
+**Finding:** Food desert tracts have **3x higher SNAP participation** (mean ~12.3% vs. ~4.6%). The LOESS curves reveal something even more telling: **at any given poverty rate**, food desert tracts have higher SNAP usage. This suggests these communities are more dependent on assistance *because* their food access is so constrained — the government funds benefits in places where the infrastructure to use them barely exists.
+
+---
+
+# Chapter 10: Distance Thresholds — Redefining "Too Far"
+
+The official food desert definition uses 1 mile (urban) / 10 miles (rural). But how does the picture change when we shift the distance cutoff?
+
+```{r plot14-thresholds, fig.width = 11, fig.height = 6}
+threshold_data <- tibble(
+  Threshold    = factor(c("1/2 Mile", "1 Mile", "10 Miles", "20 Miles"),
+                        levels = c("1/2 Mile", "1 Mile", "10 Miles", "20 Miles")),
+  Population   = c(
+    sum(df$lapophalf, na.rm = TRUE),
+    sum(df$lapop1,    na.rm = TRUE),
+    sum(df$lapop10,   na.rm = TRUE),
+    sum(df$lapop20,   na.rm = TRUE)
+  )
+) %>%
+  mutate(Pop_Millions = Population / 1e6)
+
+ggplot(threshold_data, aes(x = Threshold, y = Pop_Millions, fill = Threshold)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = paste0(round(Pop_Millions, 1), "M")),
+            vjust = -0.5, fontface = "bold", size = 4.5) +
+  scale_fill_manual(values = c("#c0392b", "#e67e22", "#27ae60", "#2980b9")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+  labs(title    = "Redefining 'Too Far': Distance Thresholds Reshape the Crisis",
+       subtitle = "Total U.S. population with low access to supermarkets at each distance cutoff",
+       x = "Distance to Nearest Supermarket", y = "Population (Millions)",
+       caption  = "Source: USDA Food Access Research Atlas (2019)") +
+  theme(legend.position = "none")
+```
+
+**Finding:** At the **half-mile threshold** (walkable access), over **215 million Americans** — roughly 70% of the population — lack a nearby supermarket. At **1 mile**, it is still ~123 million. The 10- and 20-mile thresholds capture the most extreme rural cases (~5M and ~0.5M). If we define "walkable access" as the standard, the crisis is vastly larger than the official food desert count.
+
+---
+
+# Chapter 11: Urban vs. Rural — Two Different Kinds of Crisis
+
+Urban and rural food deserts have fundamentally different profiles. Understanding this matters for policy.
+
+```{r plot15-urban-rural-profile, fig.width = 12, fig.height = 6}
+ur_comparison <- df %>%
+  filter(LILATracts_1And10 == 1) %>%
+  group_by(area_type) %>%
+  summarise(
+    `Poverty Rate (%)`    = mean(PovertyRate, na.rm = TRUE),
+    `% No Vehicle`        = mean(pct_no_vehicle, na.rm = TRUE),
+    `% on SNAP`           = mean(pct_snap, na.rm = TRUE),
+    `% Children`          = mean(pct_kids, na.rm = TRUE),
+    `% Seniors`           = mean(pct_seniors, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(-area_type, names_to = "Metric", values_to = "Value")
+
+ggplot(ur_comparison, aes(x = Metric, y = Value, fill = area_type)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  geom_text(aes(label = round(Value, 1)),
+            position = position_dodge(width = 0.7),
+            vjust = -0.5, size = 3.5) +
+  scale_fill_manual(values = c("Rural" = "#27ae60", "Urban" = "#8e44ad")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(title    = "Two Different Kinds of Food Deserts",
+       subtitle = "Comparing the profile of urban vs. rural food desert tracts",
+       x = NULL, y = "Mean Value (%)", fill = NULL,
+       caption  = "Source: USDA Food Access Research Atlas (2019)") +
+  theme(legend.position = "top",
+        axis.text.x = element_text(angle = 15, hjust = 1))
+```
+
+**Finding:** Urban food deserts have roughly **3x the vehicle-lessness** and higher SNAP dependency than rural ones. Rural food deserts have a higher **senior share**, reflecting aging populations left behind as younger residents move to cities. This means policy solutions must differ: cities need grocery store incentive programs and last-mile delivery, while rural areas need mobile markets and transportation networks.
+
+---
+
+# Chapter 12: The Deepest Deserts — Where Multiple Vulnerabilities Collide
+
+What makes a tract *truly* desperate is when poverty, vehicle-lessness, and SNAP dependency all collide.
+
+```{r plot16-heatmap, fig.width = 12, fig.height = 8}
+# Mean vulnerability indicators for food desert tracts by state
+state_vuln <- df %>%
+  filter(LILATracts_1And10 == 1, Pop2010 > 100) %>%
+  group_by(State) %>%
+  summarise(
+    `Poverty Rate`   = mean(PovertyRate, na.rm = TRUE),
+    `% No Vehicle`   = mean(pct_no_vehicle, na.rm = TRUE),
+    `% on SNAP`      = mean(pct_snap, na.rm = TRUE),
+    n_fd_tracts      = n(),
+    .groups = "drop"
+  ) %>%
+  filter(n_fd_tracts >= 20) %>%
+  # Rank by combined severity
+  mutate(combined = (`Poverty Rate` + `% No Vehicle` + `% on SNAP`) / 3) %>%
+  slice_max(combined, n = 20) %>%
+  select(-n_fd_tracts, -combined)
+
+state_vuln_long <- state_vuln %>%
+  pivot_longer(-State, names_to = "Indicator", values_to = "Value")
+
+ggplot(state_vuln_long,
+       aes(x = Indicator, y = reorder(State, Value), fill = Value)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  geom_text(aes(label = round(Value, 1)), size = 3) +
+  scale_fill_viridis_c(option = "inferno", direction = -1) +
+  labs(title    = "Multi-Vulnerability Heatmap: The Deepest Food Deserts",
+       subtitle = "Top 20 states by combined severity in food desert tracts",
+       x = NULL, y = NULL, fill = "Mean %",
+       caption  = "Source: USDA Food Access Research Atlas (2019)") +
+  theme(panel.grid = element_blank())
+```
+
+**Finding:** **Mississippi, Louisiana, and New Mexico** don't just have the *most* food deserts — they have the most *severe* ones. Their food desert tracts show the highest combined poverty, vehicle-lessness, and SNAP dependency. When multiple barriers converge in the same neighborhood, they create a feedback loop that is extremely difficult to break.
+
+---
+
+# Chapter 13: A Demographic Portrait — Treemap of Food Desert Residents
+
+Let's see all 39 million food desert residents in one picture, broken down by race.
+
+```{r plot17-treemap, fig.width = 12, fig.height = 7}
+# Using mutually exclusive RACE categories (not Hispanic ethnicity, which overlaps)
+# These 6 race categories sum exactly to Pop2010 in each tract.
+fd_subset <- df %>% filter(LILATracts_1And10 == 1)
+
+treemap_data <- tibble(
+  Demographic = c("White", "Black / African American", "Asian",
+                  "Am. Indian / Alaska Native",
+                  "Native Hawaiian / Pacific Isl.", "Other / Multiple Race"),
+  Population = c(
+    sum(fd_subset$TractWhite,   na.rm = TRUE),
+    sum(fd_subset$TractBlack,   na.rm = TRUE),
+    sum(fd_subset$TractAsian,   na.rm = TRUE),
+    sum(fd_subset$TractAIAN,    na.rm = TRUE),
+    sum(fd_subset$TractNHOPI,   na.rm = TRUE),
+    sum(fd_subset$TractOMultir, na.rm = TRUE)
+  )
+) %>%
+  mutate(Pop_M = round(Population / 1e6, 1),
+         Label = paste0(Demographic, "\n", Pop_M, "M"))
+
+ggplot(treemap_data,
+       aes(area = Population, fill = Demographic, label = Label)) +
+  geom_treemap(color = "white", size = 2) +
+  geom_treemap_text(colour = "white", place = "centre",
+                    size = 12, fontface = "bold") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title    = "Who Lives in America's Food Deserts?",
+       subtitle = "Area proportional to population (race categories are mutually exclusive, sum to total)",
+       caption  = "Source: USDA Food Access Research Atlas (2019)") +
+  theme(legend.position = "none",
+        plot.title = element_text(size = 16))
+```
+
+**Finding:** While White residents make up the largest absolute number (~24.9M), the *disproportionate* burden falls on Black (~8.6M) and Native American (~0.7M) communities relative to their national population shares.
+
+---
+
+# Chapter 14: Correlation Matrix — What Drives Food Deserts?
+
+Finally, let's examine how all these factors relate to each other statistically.
+
+```{r plot18-correlation, fig.width = 10, fig.height = 8}
+cor_vars <- df %>%
+  select(
+    `Poverty Rate`      = PovertyRate,
+    `Median Income`     = MedianFamilyIncome,
+    `% No Vehicle`      = pct_no_vehicle,
+    `% on SNAP`         = pct_snap,
+    `% Children`        = pct_kids,
+    `% Seniors`         = pct_seniors,
+    `% Black`           = pct_black,
+    `% Hispanic`        = pct_hispanic,
+    `% White`           = pct_white,
+    `Food Desert`       = LILATracts_1And10
+  ) %>%
+  drop_na()
+
+cor_matrix <- cor(cor_vars)
+
+# Convert to long format for ggplot tile heatmap
+cor_long <- as.data.frame(as.table(cor_matrix))
+names(cor_long) <- c("Var1", "Var2", "Correlation")
+
+ggplot(cor_long, aes(x = Var1, y = Var2, fill = Correlation)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(Correlation, 2)), size = 3) +
+  scale_fill_gradient2(low = "#2980b9", mid = "white", high = "#c0392b",
+                       midpoint = 0, limits = c(-1, 1)) +
+  labs(title    = "What Factors Are Most Associated with Food Deserts?",
+       subtitle = "Pairwise correlations across 72,000+ census tracts",
+       x = NULL, y = NULL,
+       caption  = "Source: USDA Food Access Research Atlas (2019)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid = element_blank())
+```
+
+**Finding:** **Poverty rate** and **% on SNAP** are the strongest positive correlates with food desert status. **Median income** is strongly negatively correlated. **% Black** shows a meaningful positive correlation while **% White** is negative — confirming the racial disparity statistically. Interestingly, **% Seniors is negatively correlated**, confirming food deserts skew younger.
+
+---
+
+# Conclusion: What the Data Tells Us
+
+This analysis of 72,531 census tracts reveals that food deserts are not random — they are **patterned by income, race, geography, and infrastructure**. Five key findings stand out:
+
+1. **The Urban Surprise:** Cities, not the countryside, are where most food desert residents live (14.4% vs. 7.8% food desert rate).
+2. **The Car Equation:** Vehicle access is a hidden multiplier — lacking a car quadruples food desert risk.
+3. **The Racial Fault Lines:** Black and Native American communities are 1.75x and 2x overrepresented in food deserts.
+4. **The SNAP Paradox:** We fund food benefits in places where the stores to spend them barely exist.
+5. **The Children's Crisis:** Nearly 10 million children live in food desert tracts, outnumbering seniors 2-to-1.
+
+These patterns suggest that solving food deserts requires more than opening grocery stores. It demands addressing the tangled web of transportation infrastructure, income inequality, and historical disinvestment. The data is clear: **we know exactly where these communities are** — the question is whether we choose to act.
+
+---
+
+*Data source: USDA Economic Research Service, Food Access Research Atlas, 2019.*
+*Available at: [https://www.ers.usda.gov/data-products/food-access-research-atlas/](https://www.ers.usda.gov/data-products/food-access-research-atlas/)*

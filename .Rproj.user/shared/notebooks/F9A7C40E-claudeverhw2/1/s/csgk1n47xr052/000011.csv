@@ -1,0 +1,5 @@
+"0","ncaa_gendered <- ncaa_tidy %>%"
+"0","  filter(sport_code >= 1 & sport_code <= 37) %>%"
+"0","  mutate(gender = ifelse(sport_code <= 18, ""Men's"", ""Women's""))"
+"0",""
+"0","head(ncaa_gendered, 10)"
