@@ -48,17 +48,37 @@ The goal of this project is to understand:
 ![State Distribution](FoddState.png)
 
 **Insight:**
-- Food deserts are **heavily concentrated in the South and Southwest**
-- Highest:
-  - Mississippi (~31.6%)
-  - New Mexico (~25.3%)
-  - Arkansas (~24.9%)
-- Lowest:
-  - New York (~4%)
-  - New Jersey (~5.4%)
-  - Vermont (~6.6%)
+- Food deserts are concentrated in the **South and Southwest**
+- Highest: Mississippi (~31.6%)
+- Lowest: New York (~4%)
 
-👉 Shows **clear geographic inequality**
+---
+
+### 5. Vehicle Access vs Food Desert Risk
+![Vehicle Impact](withoutCar.png)
+
+**Insight:**
+- Areas with low vehicle access have **up to 4× higher food desert rates**
+- Transportation is a **critical hidden factor**
+- Even if stores exist, lack of mobility = limited access  
+
+---
+
+### 6. SNAP Participation Distribution
+![SNAP Histogram](Snapbenefit.png)
+
+**Insight:**
+- Food desert tracts show **much higher SNAP participation**
+- Distribution shifts right → higher dependency  
+
+---
+
+### 7. SNAP vs Poverty Relationship
+![SNAP Curve](SnapCurve.png)
+
+**Insight:**
+- At the same poverty level, food deserts have **higher SNAP usage**
+- Indicates deeper structural disadvantage beyond income  
 
 ---
 
@@ -77,12 +97,12 @@ The goal of this project is to understand:
 - Low-income areas are up to **10× more likely** to be food deserts  
 
 ### 4. Transportation Is Critical
-- Lack of vehicle access significantly increases risk  
-- Food access depends on both **distance + mobility**
+- Lack of vehicle access **quadruples risk**
+- Access = **distance + mobility**
 
 ### 5. SNAP Dependency Is Higher
-- Food desert areas show higher SNAP participation  
-- Even at the same poverty level, dependency is higher  
+- Food desert areas rely more on SNAP  
+- Even at equal poverty → higher dependency  
 
 ---
 
