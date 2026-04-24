@@ -1,0 +1,783 @@
+---
+title: "HW-2"
+author: "Priyankkumar Chandrakant Patel"
+date: "2026-02-03"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Part A
+
+```{r Loading the library}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(patchwork) 
+```
+
+
+
+```{r Reading the dataset}
+# Here null and NA values are treated as missing values.
+data = read_csv("Food Access Research Atlas.csv", na = c("NULL", "NA"),
+               show_col_types = FALSE)
+
+
+# Checking the first 10 values of the dataset. 
+head(data, 10)
+
+```
+
+
+### Dataset Source and Description
+
+**Dataset:** USDA Economic Research Service's Food Access Research Atlas (2019)
+
+**Citation:** U.S. Department of Agriculture, Economic Research Service. Food Access Research Atlas. Available at: https://www.ers.usda.gov/data-products/food-access-research-atlas/
+
+Downloaded from: https://catalog.data.gov/dataset (U.S. Government Open Data Portal)
+
+**Why this dataset?** I chose the USDA Food Access Research Atlas because it measures a very real, everyday problem like  how far people live from a supermarket and whether they have the resources economically and transportation to reach one. It is unlike poverty and hunger but rather related to the food access directly connecting to geography, income, and daily survival.We rarely see where it concentrates, who it affects disproportionately, and what surprising factors like car ownership amplify the crisis. I was interested in working with the dataset related to the public health and social equity.it  relates to the experience I have had related to the supermarket accessibility nearby, so In my visualization I wanted to explore how factors such as vehicle ownership, SNAP participation, income levels, and poverty rates relate to food access classification. Based on USDA site census tracts that are both low income and far from a supermarket are called food desert.The dataset is unusually large it covers 72,531 census tracts with variables spanning income, race, vehicle access, SNAP usage, and distance to the nearest supermarket allowing multi-dimensional exploration of a single social problem. 
+
+
+
+Example Imagine stepping outside  and the nearest stop and shop store with fresh produce is over a mile away and we do not own a car. For nearly **39 million Americans**, this is not a experiment; it is daily life. The USDA calls these neighborhoods as **"food deserts"**: census tracts that are both low-income and far from a supermarket.
+
+The dataset contains 72,531  census tracts with 147 variables covering population demographics, poverty rates, supermarket distance measures, vehicle access, SNAP benefit usage, and racial/ethnic breakdowns.
+
+
+
+**Variables of Interest:**
+There are total 147 variables here. which includes census tract, state,county , population, lowincome tracts, low access tracts. some of the variable of interest are
+
+| Variable | Description |
+|---|---|
+| `LILATracts_1And10` | **Food desert flag** — 1 if the tract is low-income AND the nearest supermarket is >1 mile (urban) or >10 miles (rural) |
+| `PovertyRate` | % of tract population below the federal poverty line |
+| `MedianFamilyIncome` | Median family income in the tract |
+| `Urban` | 1 = urban tract, 0 = rural tract |
+| `TractHUNV` | Count of housing units without a vehicle |
+| `OHU2010` | Total occupied housing units (denominator for vehicle/SNAP rates) |
+| `TractSNAP` | Count of housing units receiving SNAP (food stamp) benefits |
+| `Pop2010` | Total tract population from the 2010 Census |
+| `TractKids`, `TractSeniors` | Children and senior population counts |
+| `TractBlack`, `TractWhite`, `TractHispanic`, `TractAIAN` | Race/ethnicity population counts |
+
+
+
+```{r Data Preprocessing}
+data = data %>%
+  # Creating a readable label for the USDA Food Desert indicator
+  # converting the binary to factor categorical variable.
+  mutate(
+    FoodDesert = factor(LILATracts_1And10, levels = c(0, 1),
+                        labels = c("Not Food Desert", "Food Desert")),
+    # Converting Urban indicator 0,1 into rural and urban.
+    AreaType   = factor(Urban, levels = c(0, 1), labels = c("Rural", "Urban")),
+    # Grouping the poverty rate into bins so we can compare tracts by poverty category.
+    PovertyBin = cut(PovertyRate, breaks = c(0, 10, 20, 30, 50, 100), 
+            labels = c("0-10%", "10-20%", "20-30%", "30-50%", "50%+"), include.lowest = TRUE)
+    )
+```
+
+```{r creating column for the vehicle and the snap }
+# NoVehiclePtg column is for the % of the occupied household that do not have a car.
+# SnapPtg column is for the % of the occupied households receiving snap benefits.
+# here the OHU2010 is the total household occupancy. 
+data = data %>%
+  mutate(
+    NoVehiclePtg = if_else(OHU2010 > 0, pmin(TractHUNV / OHU2010 * 100, 100), NA_real_),
+    SnapPtg      = if_else(OHU2010 > 0, pmin(TractSNAP / OHU2010 * 100, 100), NA_real_)
+  )
+
+```
+
+```{r creating the columns for the kids, senior and races}
+
+# creating the percntage variable  using the pop2010 as the denominator, 
+# and here the each variable is the percent of the total tract population. 
+# here i am avoiding the division by the population value greater then 0.
+# If Pop 2010 is 0 or missing we assign the missing real number value. 
+data = data %>%
+  mutate(
+    kidsPtg    = if_else(Pop2010 > 0, TractKids / Pop2010 * 100, NA_real_),
+    SeniorPtg =  if_else(Pop2010 > 0, TractSeniors / Pop2010 * 100, NA_real_),
+    BlackPtg    = if_else(Pop2010 > 0, TractBlack / Pop2010 * 100, NA_real_),
+    WhitePtg    = if_else(Pop2010 > 0, TractWhite / Pop2010 * 100, NA_real_),
+    Hispaptg = if_else(Pop2010 > 0, TractHispanic / Pop2010 * 100, NA_real_),
+    AsianPtg     = if_else(Pop2010 > 0, TractAIAN / Pop2010 * 100, NA_real_)
+  )
+# printing the total number of the tracts. 
+# number of the food desert tracts.
+# total population living in the foodo desert tracts)
+cat("Total tracts:", nrow(data), "\n")
+cat("Food desert tracts:", sum(data$LILATracts_1And10 == 1, na.rm = TRUE), 
+    "\n")
+cat("Population in food deserts:",
+    format(sum(data$Pop2010[data$LILATracts_1And10 == 1], na.rm = TRUE), big.mark = ","), "\n")
+```
+
+Processing steps performed:
+
+1. Converted binary indicators (`LILATracts_1And10`, `Urban`) to descriptive factor variables (`FoodDesert`, `AreaType`) for clearer visualization labels.
+2. Binned `PovertyRate` into five categories for grouped comparisons.
+3. Calculated percentage variables (`NoVehiclePtg`, `pct_snap`, `pct_kids`, `pct_seniors`, racial percentages) by dividing count variables by the appropriate denominators (`OHU2010` for housing-based metrics, `Pop2010` for population-based metrics), with safeguards against division by zero and values capped at 100%.
+
+```{r total food desert, fig.width = 12, fig.height = 5}
+
+#total population and the fooddesert populatin and their tracts.
+TotalPop  = sum(data$Pop2010, na.rm = TRUE)
+FoodDesPop    = sum(data$Pop2010[data$LILATracts_1And10 == 1], na.rm = TRUE)
+FoodDesTracts  = sum(data$LILATracts_1And10, na.rm = TRUE)
+
+# Plotting the bar chart for the tract count. 
+p1 = data %>%
+  # counting how many tracts are food desert and not. 
+  count(FoodDesert) %>%
+  ggplot(aes(x = FoodDesert, y = n, fill = FoodDesert)) +
+  # plotting the bars.
+  geom_col(width = 0.6) +
+  geom_text(aes(label = format(n, big.mark = ",")),
+            vjust = -0.5, fontface = "bold", size = 4.5) +
+  scale_fill_manual(values = c("Not Food Desert" = "blue",
+                                "Food Desert"     = "red")) +
+  # for the y axis label shown with the comma. 
+  scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.15))) +
+  labs(title    = "1 in 8 Census Tracts Is a Food Desert",
+       subtitle = paste0(format(FoodDesTracts, big.mark = ","), " of ",
+                         format(nrow(data), big.mark = ","),
+                         " tracts lack appropriate grocery access"),
+       x = NULL, y = "Number of Census Tracts") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold"))
+##ggsave("fooddesertcensusplot.png", width = 10, height = 6, dpi = 300)
+
+# Pie chart for the population of food desert residents. 
+populationpie = tibble(
+  category = c("Rest of US", "Food Desert Residents"),
+  pop      = c(TotalPop - FoodDesPop, FoodDesPop)
+)
+
+p2 = ggplot(populationpie, aes(x = 2, y = pop, fill = category)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  xlim(0.5, 2.5) +
+  scale_fill_manual(values = c("Rest of US" = "blue",
+                                "Food Desert Residents" = "red")) +
+  labs(title    = "39 Million People Live in Food Deserts",
+       subtitle = paste0(round(FoodDesPop/ TotalPop * 100, 1),
+                         "% of the US population"),
+       fill = NULL) +
+  theme_void(base_size = 13) +
+  theme(plot.title    = element_text(face = "bold", size = 15),
+        plot.subtitle = element_text(color = "grey", size = 11),
+        legend.position = "bottom")
+#ggsave("fooddesertpopulation.png", width = 10, height = 6, dpi = 300)
+
+p1 + p2 
+```
+
+
+**Finding:** About **12.8% of all census tracts** — home to roughly **39 million people** — qualify as food deserts. That is more than the entire population of Canada living in neighborhoods where fresh groceries are structurally out of reach and here the bar chart shows us that 1 in 8 americans live in food desert based on the population split in total census tract.
+
+
+```{r urban vs rural, fig.width = 12, fig.height = 5}
+# here we are summarizing the fooddesert stats based on the area type.
+UrbanRuralSummary = data %>%
+  # splitting the data into group by urban and rural. 
+  group_by(AreaType) %>%
+  summarise(
+    # for counting the total census tracts in each group .
+    totalTracts = n(),
+    # counting the food desert tracts 
+    FoodDesTracts    = sum(LILATracts_1And10 == 1, na.rm = TRUE),
+    # percent of the tract that are in food desert.
+    FdRate     = FoodDesTracts / totalTracts * 100,
+    # population of the people living in the food desert tract.
+    TotalPop    = sum(Pop2010, na.rm = TRUE),
+    FoodDesPop      = sum(Pop2010[LILATracts_1And10 == 1], na.rm = TRUE),
+    # for getting an ungroup dataframe after  the summarizing is completed. 
+    .groups = "drop"
+  )
+
+# creating the bar chart plot for the food desert comparision of the urban and rural. 
+ggplot(UrbanRuralSummary,
+             aes(x = AreaType, y = FdRate, fill = AreaType)) +
+  # drawing the bar whose heights are fdrates.
+  geom_col(width = 0.6) +
+  geom_text(aes(label = paste0(round(FdRate, 1), "%\n(",
+                                format(FoodDesTracts, big.mark = ","), " tracts)")),
+            # placing the labels slightly above.
+            vjust = -0.3, size = 4, fontface = "bold") +
+  scale_fill_manual(values = c("Rural" = "blue", "Urban" = "red")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.2)),
+                     labels = label_percent(scale = 1)) +
+  labs(title    = "The Urban Surprise: Cities Have Nearly 2x the Food Desert Rate",
+       subtitle = "Percentage of census tracts as food deserts",
+       x = NULL, y = "Food Desert Rate (%)",
+       ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", size = 14))
+#ggsave("UrbanvsRural.png", width = 10, height = 6, dpi = 300)
+```
+ Contrary to the common stereotype of food deserts as a rural problem, urban census tracts have a food desert rate of approximately 14.4%, nearly double the rural rate of approximately 7.8%. This means that of the majority of food desert tracts nationwide, the majority are in cities  where high population density means millions more people are affected.
+ 
+ 
+```{r, fig.width = 12, fig.height = 5}
+ ggplot(UrbanRuralSummary, aes(x = AreaType, y = FoodDesPop/ 1e6, fill = AreaType)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = paste0(round(FoodDesPop/ 1e6, 1), "M")),
+            vjust = -0.5, fontface = "bold", size = 5) +
+  scale_fill_manual(values = c("Rural" = "blue", "Urban" = "red")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(title    = "Urban Food Deserts Affect approx 7x More People",
+       subtitle = "Population living in food desert tracts",
+       x = NULL, y = "Population (Millions)") +
+  theme(legend.position = "none")
+#ggsave("urbvsrurpop.png", width = 10, height = 6, dpi = 300)
+
+
+```
+so the population under the food desert that lives in the urban is more than rural almost 7 times will be affected.Which suggest that food desert are more in cities compare to rural areas that is unusual. 
+
+
+```{r Poverty Boxplot, fig.width = 12, fig.height = 5}
+# Comparing  the poverty rate between food desert area and the non food desert area.
+data %>%
+  # removing the rows where the poverty rate is missing.
+  filter(!is.na(PovertyRate)) %>%
+  # plotting the box plot and reducing the outlier. 
+  ggplot(aes(x = FoodDesert, y = PovertyRate, fill = FoodDesert)) +
+  geom_boxplot(outlier.alpha = 0.08) +
+  scale_fill_manual(values = c("Not Food Desert" = "blue",
+                                "Food Desert"     = "red")) +
+  labs(title    = "Food Desert Tracts Have Higher Poverty Rates",
+       subtitle = "Boxplots shows  poverty (median) and spread by tract type",
+       x = NULL, y = "Poverty Rate (%)",
+       ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold"))
+#ggsave("HighPoverty.png", width = 10, height = 6, dpi = 300)
+```
+
+here the boxplot shows the  food desert tracts have a median poverty rate of approx 20-25% compared to the  10-15% for non affected food tracts, showing the poverty distribution is shifted upwards here.
+
+
+
+```{r Vehicle Access Bar, fig.width = 12, fig.height = 5}
+# Creating the bar chart for th food desert rate with the household without the vehicle.
+data %>%
+  # here keeping the only rows wehre the vehicle % is available.
+  filter(!is.na(NoVehiclePtg)) %>%
+  # creating the bucket for the novehicleptg into the interpretable ranges and binnings.
+  mutate(VehicleBin = cut(NoVehiclePtg,
+                           breaks = c(-1, 5, 15, 30, 100),
+                           labels = c("0-5%", "5-15%", "15-30%", "30%+"))) %>%
+  # drop anything that didn't falling into the bin.
+  filter(!is.na(VehicleBin)) %>%
+  group_by(VehicleBin) %>%
+  # % of the tracts that are the food desert in each bin.
+  summarise(FdRate= mean(LILATracts_1And10, na.rm = TRUE) * 100,
+            .groups = "drop") %>%
+  # here i am plotting the bar height and color throught eh fdrate.
+  ggplot(aes(x = VehicleBin, y = FdRate, fill = FdRate)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = paste0(round(FdRate, 1), "%")),
+            vjust = -0.5, fontface = "bold", size = 4.5) +
+  scale_fill_gradient(low = "#f1c40f", high = "red") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(title    = "Without a Car, Food Desert Risk Quadruples fuor time",
+       subtitle = "Food desert rate by % of housing units lacking vehicle access",
+       x = "% Housing Units Without a Vehicle",
+       y = "% Tracts That Are Food Deserts",
+       ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold"))
+#ggsave("withoutCar.png", width = 10, height = 6, dpi = 300)
+```
+Based on the bar chart of percentage of tracts against the total percent of housing units without vehicle, the transportation data suggest the pattern that the Tracts where 15-30% of the household lack vehicle access have nearly 20% food desert rates in comparision to the 7% in areas where household mostly have owned a car. transportation option clearly appears to affect the food access. 
+
+Tracts where 30%+ of households have no car have roughly **4 times** the food desert rate compared to tracts where almost everyone has a car (0-5%). Not having a vehicle in a neighborhood without a nearby grocery store turns inconvenience into genuine food insecurity.
+
+
+
+```{r Income vs Food Desert, fig.width = 12, fig.height = 5}
+# Creating the bar chart for the food desert rate by teh median of the family income. 
+data %>%
+  # converting the continous income into  income bins.
+  mutate(IncomeBin = cut(MedianFamilyIncome,
+                         # income cut points. 
+                          breaks = c(0, 35000, 50000, 75000, 100000, Inf),
+                          labels = c("<$35K", "$35-50K", "$50-75K", "$75-100K", "$100K+"),
+                          include.lowest = TRUE)) %>%
+  # Dropping rows where income is missing 
+  filter(!is.na(IncomeBin)) %>%
+  # here we grouop  by thte income bracets.
+  group_by(IncomeBin) %>%
+  # % of the tracts that are food deserts in each bracket.
+  summarise(FdRate= mean(LILATracts_1And10, na.rm = TRUE) * 100,
+            # returning the ungroup result. 
+            .groups = "drop") %>%
+  # mapping the bracket to the x, and rate to y color through the rate.
+  ggplot(aes(x = IncomeBin, y = FdRate, fill = FdRate)) +
+  geom_col(width = 0.65) +
+  # labeling after each bar. 
+  geom_text(aes(label = paste0(round(FdRate, 1), "%")),
+            vjust = -0.5, fontface = "bold", size = 4.5) +
+  scale_fill_gradient(low = "#f39c12", high = "red") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(title    = "Low Income Tracts Are 10x More Likely to Be Food Deserts",
+       subtitle = "Food desert rate by median family income bracket",
+       x = "Median Family Income", y = "% Tracts That Are Food Deserts",
+       ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold"))
+#ggsave("IncomeCliff.png", width = 10, height = 6, dpi = 300)
+```
+
+The bars drop sharply from left to right. Tracts with median income under $35K have roughly a **10x higher food desert rate** compared to tracts above $100K. Income practically defines whether a neighborhood is a food desert.
+
+
+
+```{r States Top Bottom 15, fig.width = 12, fig.height = 8}
+# creating the state level summary here  to show the food desert. 
+StateSummary = data %>%
+  # grouping by census tracts of the states.
+  group_by(State) %>%
+  
+  summarise(
+    # total number of the tracts in the states.
+    totalTracts = n(),
+    #coutnign the tracts that are food desert.
+    FoodDesTracts    = sum(LILATracts_1And10, na.rm = TRUE),
+    # converting it to the the percent of the tracts.
+    FdRate     = FoodDesTracts / totalTracts * 100,
+    # average poverty rate in the state
+    MeanPoverty = mean(PovertyRate, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# top and bottom 15 states based on the food desert rate.
+top15 = StateSummary %>% slice_max(FdRate, n = 15)
+bot15 = StateSummary %>% slice_min(FdRate, n = 15)
+
+bind_rows(
+  top15 %>% mutate(group = "Highest Food Desert Rate"),
+  bot15 %>% mutate(group = "Lowest Food Desert Rate")
+) %>%
+  ggplot(aes(x = reorder(State, FdRate), y = FdRate, fill = group)) +
+  geom_col(width = 0.7) +   
+  geom_text(aes(label = paste0(round(FdRate, 1), "%")),
+            hjust = -0.1, size = 3.2) +
+  coord_flip() +
+  facet_wrap(~ group, scales = "free_y") +
+  scale_fill_manual(values = c("Highest Food Desert Rate" = "red",
+                               "Lowest Food Desert Rate"  = "blue")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.25))) +
+  labs(
+    title    = "Food Deserts Concentrate in the South and Southwest",
+    subtitle = "% of census tracts classified as food deserts, by state",
+    x = NULL, y = "Food Desert Rate (%)"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = "bold", size = 12),
+        plot.title = element_text(face = "bold"))
+
+```
+
+**Mississippi leads at 31.6%** — nearly 1 in 3 tracts is a food desert. The top tier is dominated by Southern states (MS, AR, LA, AL, GA, SC) plus New Mexico and Alaska. States like New Hampshire, Connecticut, and Hawaii sit below 5%. This geographic clustering mirrors patterns of historical disinvestment and persistent poverty.
+
+Based on the state level comparison of the food desert distribution it is not evenly distributed and southmost states of USA have noticeably higher food desert rates compared to northeast and west states with highest rate in Mississippi of about 31% . so it is more concentrated in the particular region then uniformly spread in U S.
+
+
+```{r snap Histogram, fig.width = 11, fig.height = 6}
+# Creating the histogram for comparing the SNAP between
+# the food desert and the non food desert tracts.
+
+data %>%
+  #keeping the snapn % and keeping below 80 to avoid some outlier.
+  filter(!is.na(SnapPtg), SnapPtg<= 80) %>%
+  # mapping the snap to x and the color to the tractype.
+  ggplot(aes(x = SnapPtg, fill = FoodDesert)) +
+  # Overllaying the two ohistograms on the same x asis.
+  geom_histogram(position = "identity", alpha = 0.6, bins = 50, color = NA) +
+  scale_fill_manual(values = c("Not Food Desert" = "blue",
+                                "Food Desert"     = "red")) +
+  labs(title    = "Higher snap Benefits, Fewer Stores",
+       subtitle = "Food desert tracts have much higher SNAP use rates",
+       x = "% Housing Units Receiving SNAP Benefits",
+       y = "Number of Tracts", fill = NULL,
+       ) +
+  theme(legend.position = "top")
+#ggsave("Snapbenefit.png", width = 10, height = 6, dpi = 300)
+```
+
+
+
+```{r snap scatter plot , fig.width = 10, fig.height = 6}
+# Creating the snap participtation and the poverty using the scatter plot.
+data %>%
+  filter(!is.na(SnapPtg), !is.na(PovertyRate), SnapPtg<= 80) %>%
+  ggplot(aes(x = PovertyRate, y = SnapPtg, color = FoodDesert)) +
+  geom_point(alpha = 0.08, size = 0.5) +
+  # for getting the continous smooth lines. 
+  geom_smooth(method = "loess", se = TRUE, linewidth = 1.2) +
+  scale_color_manual(values = c("Not Food Desert" = "blue",
+                                 "Food Desert"     = "red")) +
+  labs(title    = "At the Same Poverty Level, Food Deserts Have Higher SNAP Dependency",
+       subtitle = "Curves show food desert tracts rely more on SNAP at every poverty rate",
+       x = "Poverty Rate (%)", y = "% Housing Units on SNAP", color = NULL,
+       ) +
+  theme(legend.position = "top")
+#ggsave("SnapCurve.png", width = 10, height = 6, dpi = 300)
+```
+
+
+**Finding:** Food desert tracts have **3x higher SNAP participation** (mean ~12.3% vs. ~4.6%). The smooth curves reveal something even more telling: **at any given poverty rate**, food desert tracts have higher SNAP usage. This suggests these communities are more dependent on assistance *because* their food access is so constrained, the government funds benefits in places where the infrastructure to use them barely exists.
+
+The histogram compares the percentage of the housing unit receiving the snap benefits between food desret and the non food desert tracts. the blue bar is the non food desert census. while red indicate the food desert. The distribution clearly shift to the right for the food desert tracts which suggest that the food deserts tracts have higher snap usage compared to non food desert tracts. most non food desert areas cluster at low snap percent, while the tracts are more concentrated in higher ranges.
+
+the SNAP vs poverty curve shows the smooth line. although the snap participation increases as poverty increase in all tracts, the curve for the food desert areas lies above that of the non food desert. Overall visualization shows  snap usage is higher in food desert areas. while snap are generally to support low income household but the data suggest that it is often concentrated in areas where the food access  to supermarket , groceries are limited.
+
+
+# Conclusion: 
+
+This analysis of 72,531 census tracts reveals that food deserts are not random — they are **patterned by income, race, geography, and infrastructure**. Five key findings stand out:
+**The Urban Surprise:** Cities, not the countryside, are where most food desert residents live (14.4% vs. 7.8% food desert rate).
+**The Car affect:** Vehicle access is a hidden multiplier lacking a car quadruples food desert risk.
+**The SNAP Usage:** We fund food benefits in places where the stores to spend them barely exist.
+
+Overall, Analysis of the USDA Food Access Research Atlas highlights how food deserts are connected to some factors such as vehicle access, SNAP, poverty and geographic regions and they are not totally random.
+
+These patterns suggest that solving food deserts requires more than opening grocery stores. It demands addressing the tangled web of transportation infrastructure, income inequality, and historical disinvestment. The data is clear: **we know exactly where these communities are**  the question is whether we choose to act.
+
+
+---
+
+
+
+
+# Part B
+
+**Problem-3**
+
+**Create a tidy data frame that includes columns for:**
+- School ID  
+- School name  
+- Sport code  
+- Sport name  
+- Year  
+- APR  
+
+All other columns can be discarded.
+
+**Use your tidied dataset to visualize the distributions of APRs over time.**  
+How does the distribution of APRs change year-to-year from 2004 to 2014?
+
+*Hint: `tidyr::starts_with()` and `stringr::str_sub()` may be useful.*
+
+```{r Loading the tsv dataset and library}
+library(tidyverse)
+# reading the tab seperated dataset
+# considering the  -9 , -99,-999, . ,  as missing data according to the codebook.
+ncaa = read_tsv("26801-0001-Data.tsv", na = c("", "NA", ".", "-9", "-99", "-999"))
+```
+
+```{r getting the glimpse of the data.}
+glimpse(ncaa)
+```
+
+```{r selecting the columns}
+
+# selecting the the columns and the ones starting with the APR
+ncaa_selected = ncaa %>%
+  select(SCL_UNITID, SCL_NAME, SPORT_CODE, SPORT_NAME, 
+         starts_with("APR_RATE_"))
+
+#gettting the glimpse of the  columns.
+glimpse(ncaa_selected)
+```
+
+```{r making table longer}
+# Pivoting the APR columns into rows
+ncaa_long = ncaa_selected %>%
+  pivot_longer(
+    cols = starts_with("APR_RATE_"),
+    names_to = "year_col",
+    values_to = "APR"
+  )
+
+# Checking  the result
+head(ncaa_long, 10)
+```
+
+```{r}
+# Extracting just the year number from year_col
+ncaa_with_year = ncaa_long %>%
+  mutate(Year = as.integer(str_sub(year_col, 10, 13))) %>%   
+  filter(Year >= 2004, Year <= 2014)      
+
+# Checking it worked
+head(ncaa_with_year, 10)
+```
+```{r}
+# Removing the intermediate column and rename
+ncaa_tidy = ncaa_with_year %>%
+  select(-year_col) %>%
+  rename(
+    school_id = SCL_UNITID,
+    school_name = SCL_NAME,
+    sport_code = SPORT_CODE,
+    sport_name = SPORT_NAME
+  )
+
+# Final check
+head(ncaa_tidy, 10)
+```
+```{r clean data}
+# ncaa_tidy
+```
+
+```{r boxplot for the apr distribution}
+# Boxplot showing APR distribution for each year
+ggplot(ncaa_tidy, aes(x = factor(Year), y = APR)) +
+  geom_boxplot(fill = "green", alpha = 0.8) +
+  labs(
+    title = "Distribution of APRs Over Time (2004-2014)",
+    x = "Year",
+    y = "APR Score"
+  ) +
+  theme_minimal()
+```
+**How does the distribution of APRs change year-to-year from 2004 to 2014?**
+
+The median APR increase gradually from approximately 970 in 2004 to around 980 by 2014. which shows overall improvement in the academic performance across NCAA Division I program.
+
+The interquartile range remains relatively stable but it shows slight tightening. which may suggest that the middle 50% of the team maintained consistently high performance.
+
+During the 2004-2007 Many teams with APRs below 700 and some is as low as 600. after 2008-2014 fewer extreme outliers are there with the score range rarely belwo 650 to 700.
+
+The whiskers that are lower whiskers moves upward with the time by 2013-2014 very few teams scores below 750 whereas in 2004-2007 this was more common. 
+
+overall teh distribution becomes increasingly compressed at higher value and more team cluster near the maximum score taht is 1000.the gap between high and low performer is also a lot narrower. Data shows clear evidence that NCAA academic performance initiatives were successful in improving student-athlete retention and eligibility over this decade, with the most notable improvements being the elimination of extremely low-performing programs.
+
+
+**Problem-4**
+
+**We would like to compare APRs between men’s and women’s sports.**  
+Transform your tidied dataset to remove mixed sports, and create a column indicating the gender division of each sport.  
+(Assume sport codes **1–18** are **men’s** and **19–37** are **women’s**.)
+
+**Visualize the distributions of APRs over time again, but broken down by gender division.**  
+- How do the average APRs compare between men’s and women’s sports?  
+- Does this relationship hold true across each year from 2004 to 2014?
+
+*Hint: `ifelse()` may be useful.*
+
+```{r Aprs of men and women}
+#filtering to remove the mixed sports and create the gender column.
+ncaa_gendered = ncaa_tidy %>%
+  filter(sport_code >= 1 & sport_code <= 37) %>%
+   filter(!str_detect(sport_name, regex("^Mixed", ignore_case = TRUE))) %>% 
+  mutate(gender = ifelse(sport_code <= 18, "Men's", "Women's"))
+
+# Checking the result
+head(ncaa_gendered, 10)
+```
+```{r printing the new dataset.}
+# ncaa_gendered
+```
+
+```{r plotting the box for both gender side by side., }
+ggplot(ncaa_gendered, aes(x = factor(Year), y = APR, fill = gender)) +
+  geom_boxplot() +
+  labs(
+    title = "Distribution of APRs Over Time by Gender (2004-2014)",
+    x = "Year",
+    y = "APR Score",
+    fill = "Gender"
+  ) +
+  theme_minimal()
+```
+
+```{r plotting the gender using facet.}
+ggplot(ncaa_gendered, aes(x = factor(Year), y = APR, fill = gender)) +
+  geom_boxplot() +
+  facet_wrap(~gender) +
+  labs(
+    title = "Distribution of APRs Over Time by Gender (2004-2014)",
+    x = "Year",
+    y = "APR Score",
+    fill = "Gender"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+**How do the average APRs compare between men’s and women’s sports?**
+
+Women's sports consistently shows significantly higher APR' s than men's sports throughout the entire period. Looking at the boxplots, the women's distributions (shown in green) are positioned noticeably higher than the men's distributions (shown in red/pink) across all years. The median APR for women's sports remains consistently in the high 970s to low 980s range, while men's sports medians fall in the mid-960s to low 970s range. This represents an approximate 15-20 point advantage for women's programs.
+
+Additionally, women's sports shows higher median values in every year has tigher distribution with less variability and fewer extreme low outliers, particularly in the later years. 
+
+they also had greateer consistency in maintining high academic performance.
+
+
+
+**Does this relationship hold true across each year from 2004 to 2014?**
+
+Yes, this relationship is consistent and holds true without exception across every single year from 2004 to 2014. In both visualization approaches (side-by-side boxplots and faceted panels), the women's APR distributions are uniformly positioned above the men's distributions for all 11 years examined.
+
+The women's box plots never drop below the men's boxplot in any year. both the genders shows parallel improvement trends over the time, but the gender gap remains stable and the difference persist even as both the groups shows reduced varaiability and fewer low outliers in later years. This consistent pattern suggests systematic differences between men's and women's sports program rather than random Year to year variation.
+
+now let's see it on line chart.
+
+```{r plotting the line chart.}
+ncaa_gendered %>%
+  group_by(Year, gender) %>%
+  summarize(mean_APR = mean(APR, na.rm = TRUE)) %>%
+  ggplot(aes(x = Year, y = mean_APR, color = gender)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  labs(
+    title = "Average APR Over Time by Gender (2004-2014)",
+    x = "Year",
+    y = "Mean APR Score",
+    color = "Gender"
+  ) +
+  theme_minimal()
+```
+
+**Does this relationship hold true across each year from 2004 to 2014?**
+
+The line plot clearly demonstrates that women's sports (green line) maintain substantially higher average APRs than men's sports (red line) throughout the entire period. Women's sports average APRs start at approximately 970 in 2004 and rise steadily to around 988 by 2014. In contrast, men's sports begin at approximately 950 in 2004 and increase to about 974 by 2014. This represents a consistent gap of 15-20 points across the decade, with women's programs maintaining a clear academic performance advantage.
+
+** Does this relationship hold true across each year from 2004 to 2014?**
+
+Yes, this relationship holds true across every single year from 2004 to 2014. The two lines never intersect—the women's line (green) remains consistently positioned above the men's line (red) throughout the entire time period. While both genders show improvement trajectories, they maintain parallel growth patterns with a relatively stable gap between them.
+
+Both genders show improvement from 2007-2009, suggesting system wide academic reforms during this period
+
+Men's sports show a particularly steep increase between 2007 and 2009 (from ~955 to ~965), but still follow trails to  women's sports
+
+Women's sports demonstrate more gradual, steady improvement with less year to year volatility. by 2014 the gap narrows slightly but remains substantial.
+
+
+**Problem-5**
+
+**We would like to further visualize APR by both gender and specific sports.**  
+Process the sport names to remove the “Men’s” and “Women’s” prefixes so that we can compare men’s and women’s teams within each sport.
+
+**Then visualize the distribution of APR for both men’s and women’s teams for each sport.**
+
+- Are there sports where men’s and women’s teams have similar APRs?
+
+*Hint: `stringr::str_remove()` may be useful.*
+
+
+```{r comparing sports.}
+#Removing the  "Mens" and "Womens" prefixes from sport names to make comparison
+ncaa_sports = ncaa_gendered %>%
+  mutate(sport = str_remove(sport_name, "Men's "),
+         sport = str_remove(sport, "Women's "))
+
+ncaa_sports
+```
+
+```{r creating the apr distribution of sport, fig.width = 10, fig.height = 14}
+#  visualization of all sports by gender.
+ggplot(ncaa_sports, aes(x = gender, y = APR, fill = gender)) +
+  geom_boxplot() +
+  facet_wrap(~sport, ncol = 3) +
+  labs(
+    title = "APR Distribution by Sport and Gender",
+    subtitle = "Only sports with both men's and women's teams",
+    x = "Gender",
+    y = "APR Score",
+    fill = "Gender"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+here some of the sports only have one gender may be due lack of data. I will filter those and only see the data where both the men and women are present. 
+
+
+```{r removing sports one gen,}
+# Firstly, identifying which sports have BOTH men's and women's teams
+sports_both_genders = ncaa_sports %>%
+  group_by(sport) %>%
+  summarize(n_genders = n_distinct(gender)) %>%
+  filter(n_genders == 2) %>%
+  pull(sport)
+
+# Checking which sports have both
+print(sports_both_genders)
+
+# Filtering to only those sports
+ncaa_sports_both = ncaa_sports %>%
+  filter(sport %in% sports_both_genders)
+```
+
+```{r ,fig.width = 10, fig.height = 14}
+ggplot(ncaa_sports_both, aes(x = gender, y = APR, fill = gender)) +
+  geom_boxplot() +
+  facet_wrap(~sport, ncol = 3) +
+  labs(
+    title = "APR Distribution by Sport and Gender",
+    subtitle = "Comparing men's and women's teams within each sport",
+    x = "Gender",
+    y = "APR Score",
+    fill = "Gender"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(face = "bold")
+  )
+```
+
+
+
+
+```{r}
+# Calculate mean APR by sport and gender to identify similar sports
+apr_comparison = ncaa_sports_both %>%
+  group_by(sport, gender) %>%
+  summarize(mean_APR = mean(APR, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = gender, values_from = mean_APR) %>%
+  mutate(
+    difference = abs(`Women's` - `Men's`),
+    women_higher = `Women's` > `Men's`
+  ) %>%
+  arrange(difference)
+
+# Show sports ranked by similarity
+print(apr_comparison, n = 20)
+```
+
+
+**Are there sports where men’s and women’s teams have similar APRs?**
+
+So there are several sports that demonstrate teh notably similar APR Performance between men's and womens team. Using the calculated differences between teh women's and men's average apr and the box plots we can see the similarity. 
+
+
+sports with the most similarity APR's appear to be volleyball that shows the smallest gender gap and both the team performing about approx 975-977.with water polo nearly identical performance around 977-979. 
+
+Sports with the very similar APRs( difference 5-10) are fencing where Both teams around 979-984, Ice hockey performance around 978-985.Gymnastics  where Both teams near 979-987 ,Skiing where Comparable performance around 973-982, Tennis where Both teams around 971-979, Cross Country where Similar performance at 970-979
+
+sports with moderate similarity are swimming,golf, track, lacrosse, soccer.
+and largest gender appear to be basketball. 
+
+**key findings**: While women consistently achieve higher APRs across all 15 sports examined, approximately half show differences of 10 points or less, indicating substantial similarity. Individual sports (volleyball, water polo, fencing, swimming, tennis, track) tend to show smaller gender gaps than team sports like basketball.
+
+ 
+ 

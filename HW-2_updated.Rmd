@@ -1,0 +1,305 @@
+---
+title: "HW-2"
+author: "Priyankkumar Chandrakant Patel"
+date: "2026-02-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Part A — Data Story Dataset + Visualization (Food Deserts)
+
+## Problem 1 — Import + processing (same as Data Story)
+
+```{r libraries}
+library(tidyverse)  # readr, dplyr, ggplot2, tibble, etc.
+library(scales)     # comma() formatting
+library(patchwork)  # combine plots side-by-side
+```
+
+```{r import-data}
+# Primary source: USDA ERS Food Access Research Atlas (2019 release)
+# Note: the CSV uses the literal string "NULL" for missing values
+df_raw <- read_csv("Food Access Research Atlas.csv",
+                   na = "NULL",
+                   show_col_types = FALSE)
+
+head(df_raw, 10)
+```
+
+### Dataset source (primary)
+
+- **Dataset:** USDA Economic Research Service (ERS), *Food Access Research Atlas* (2019 release)
+- **Source page:** https://www.ers.usda.gov/data-products/food-access-research-atlas/
+- **Accessed via:** Data.gov listing of the same USDA ERS dataset (primary U.S. Government open data portal)
+
+### Why I chose this dataset (aim)
+
+I chose the USDA Food Access Research Atlas because it measures a very real, everyday problem: **how far people live from a supermarket and whether they have the resources (income + transportation) to reach one**.  
+My aim was to answer one clear question:
+
+> **How large is the “food desert” problem in the U.S. — in both number of census tracts and number of people affected?**
+
+This makes the visualization an explanatory “scale” story: it quantifies the problem before exploring deeper patterns.
+
+### Variables of interest (used for the visualization)
+
+For the main “scale of the problem” figure (Problem 2), I used:
+
+- **`LILATracts_1And10`**: USDA indicator for “low-income + low-access” census tracts (food desert definition used in this story)
+- **`Pop2010`**: tract population (2010 Census)
+
+I also created a derived label:
+
+- **`food_desert`**: `"Food Desert"` if `LILATracts_1And10 == 1`, else `"Not Food Desert"`
+
+### Data processing steps
+
+```{r processing}
+# 1) Create a readable label for whether a tract is a food desert (per USDA LILA flag)
+df <- df_raw %>%
+  mutate(
+    food_desert = factor(LILATracts_1And10,
+                         levels = c(0, 1),
+                         labels = c("Not Food Desert", "Food Desert"))
+  )
+
+# 2) Compute totals used in the visualization
+total_pop <- sum(df$Pop2010, na.rm = TRUE)
+
+# Population in food deserts = sum of tract population where the LILA flag is 1
+fd_pop <- df %>%
+  filter(LILATracts_1And10 == 1) %>%
+  summarise(pop = sum(Pop2010, na.rm = TRUE)) %>%
+  pull(pop)
+
+# Number of food desert tracts
+fd_tracts <- sum(df$LILATracts_1And10 == 1, na.rm = TRUE)
+
+total_pop
+fd_pop
+fd_tracts
+```
+
+---
+
+## Problem 2 — Reproduce the visualization + interpretation
+
+```{r visualization, fig.width=12, fig.height=5}
+# Panel A: Count of tracts by food desert status
+p1 <- df %>%
+  count(food_desert) %>%
+  ggplot(aes(x = food_desert, y = n, fill = food_desert)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = format(n, big.mark = ",")),
+            vjust = -0.5, fontface = "bold", size = 4.5) +
+  scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    title    = "1 in 8 Census Tracts Is a Food Desert",
+    subtitle = paste0(format(fd_tracts, big.mark = ","), " of ",
+                      format(nrow(df), big.mark = ","), " tracts meet the USDA LILA definition"),
+    x = NULL,
+    y = "Number of Census Tracts"
+  ) +
+  theme(legend.position = "none")
+
+# Panel B: Population donut (food desert residents vs rest of US)
+pop_df <- tibble(
+  category = c("Rest of US", "Food Desert Residents"),
+  pop      = c(total_pop - fd_pop, fd_pop)
+)
+
+p2 <- ggplot(pop_df, aes(x = 2, y = pop, fill = category)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  xlim(0.5, 2.5) +
+  theme_void(base_size = 13) +
+  labs(
+    title    = "~39 Million People Live in Food Deserts",
+    subtitle = paste0(round(fd_pop / total_pop * 100, 1), "% of the US population"),
+    fill = NULL
+  ) +
+  theme(legend.position = "bottom")
+
+p1 + p2 + plot_annotation(caption = "Source: USDA ERS Food Access Research Atlas (2019)")
+```
+
+### Interpretation / key conclusions
+
+- **Scale (tracts):** About **1 in 8 census tracts** are classified as food deserts under the USDA low-income + low-access definition (`LILATracts_1And10`).  
+- **Scale (people):** Roughly **39 million people** live in those tracts (based on `Pop2010`).  
+- **Main takeaway:** Food deserts are not a “rare edge case” — they affect a population comparable to an entire large country, meaning grocery access is a structural public-health and equity issue rather than an individual choice problem.
+
+
+#Part B
+
+```{r Loading the tsv dataset and library}
+library(tidyverse)
+
+
+
+
+ncaa = read_tsv("26801-0001-Data.tsv", na = c("", "NA", ".", "-9", "-99", "-999"))
+```
+```{r}
+glimpse(ncaa)
+```
+```{r}
+
+ncaa_selected <- ncaa %>%
+  select(SCL_UNITID, SCL_NAME, SPORT_CODE, SPORT_NAME, 
+         starts_with("APR_RATE_"))
+
+glimpse(ncaa_selected)
+```
+```{r}
+# Pivot the APR columns into rows
+ncaa_long <- ncaa_selected %>%
+  pivot_longer(
+    cols = starts_with("APR_RATE_"),
+    names_to = "year_col",
+    values_to = "APR"
+  )
+
+# Check the result
+head(ncaa_long, 10)
+```
+```{r}
+# Extract just the year number from year_col
+ncaa_with_year <- ncaa_long %>%
+  mutate(Year = as.integer(str_sub(year_col, 10, 13)))
+
+# Check it worked
+head(ncaa_with_year, 10)
+```
+```{r}
+# Remove the intermediate column and rename
+ncaa_tidy <- ncaa_with_year %>%
+  select(-year_col) %>%
+  rename(
+    school_id = SCL_UNITID,
+    school_name = SCL_NAME,
+    sport_code = SPORT_CODE,
+    sport_name = SPORT_NAME
+  )
+
+# Final check
+head(ncaa_tidy, 10)
+```
+```{r}
+ncaa_tidy
+```
+
+```{r}
+# Boxplot showing APR distribution for each year
+ggplot(ncaa_tidy, aes(x = factor(Year), y = APR)) +
+  geom_boxplot() +
+  labs(
+    title = "Distribution of APRs Over Time (2004-2014)",
+    x = "Year",
+    y = "APR Score"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(ncaa_tidy, aes(x = factor(Year), y = APR)) +
+  geom_violin() +
+  theme_minimal()
+```
+
+```{r}
+ncaa_gendered <- ncaa_tidy %>%
+  filter(sport_code >= 1 & sport_code <= 37) %>%
+  mutate(gender = ifelse(sport_code <= 18, "Men's", "Women's"))
+
+# Check the result
+head(ncaa_gendered, 10)
+```
+```{r}
+ncaa_gendered
+```
+
+```{r}
+ggplot(ncaa_gendered, aes(x = factor(Year), y = APR, fill = gender)) +
+  geom_boxplot() +
+  labs(
+    title = "Distribution of APRs Over Time by Gender (2004-2014)",
+    x = "Year",
+    y = "APR Score",
+    fill = "Gender"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(ncaa_gendered, aes(x = factor(Year), y = APR, fill = gender)) +
+  geom_boxplot() +
+  facet_wrap(~gender) +
+  labs(
+    title = "Distribution of APRs Over Time by Gender (2004-2014)",
+    x = "Year",
+    y = "APR Score",
+    fill = "Gender"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Angle the x-axis labels
+```
+```{r}
+ncaa_gendered %>%
+  group_by(Year, gender) %>%
+  summarize(mean_APR = mean(APR, na.rm = TRUE)) %>%
+  ggplot(aes(x = Year, y = mean_APR, color = gender)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  labs(
+    title = "Average APR Over Time by Gender (2004-2014)",
+    x = "Year",
+    y = "Mean APR Score",
+    color = "Gender"
+  ) +
+  theme_minimal()
+```
+```{r}
+ncaa_sports <- ncaa_gendered %>%
+  mutate(sport = str_remove(sport_name, "Men's "),
+         sport = str_remove(sport, "Women's "))
+
+ncaa_sports
+```
+
+`````{r, fig.width = 12, fig.height = 10}
+ggplot(ncaa_sports, aes(x = gender, y = APR, fill = gender)) +
+  geom_boxplot() +
+  facet_wrap(~sport) +
+  labs(
+    title = "APR Distribution by Sport and Gender",
+    subtitle = "Only sports with both men's and women's teams",
+    x = "Gender",
+    y = "APR Score",
+    fill = "Gender"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+`````
+
+
+
+```{r, fig.width = 10, fig.height = 14}
+ggplot(ncaa_sports, aes(x = gender, y = APR, fill = gender)) +
+  geom_boxplot() +
+  facet_wrap(~sport, ncol = 3) +
+  labs(
+    title = "APR Distribution by Sport and Gender",
+    subtitle = "Only sports with both men's and women's teams",
+    x = "Gender",
+    y = "APR Score",
+    fill = "Gender"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
