@@ -44,6 +44,24 @@ The goal of this project is to understand:
 
 ---
 
+### 4. State-Level Food Desert Distribution
+![State Distribution](FoddState.png)
+
+**Insight:**
+- Food deserts are **heavily concentrated in the South and Southwest**
+- Highest:
+  - Mississippi (~31.6%)
+  - New Mexico (~25.3%)
+  - Arkansas (~24.9%)
+- Lowest:
+  - New York (~4%)
+  - New Jersey (~5.4%)
+  - Vermont (~6.6%)
+
+👉 Shows **clear geographic inequality**
+
+---
+
 ## 🔍 Key Findings
 
 ### 1. Food Deserts Are Common
