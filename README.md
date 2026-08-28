@@ -8,14 +8,14 @@ A **food desert** is defined as a low-income census tract where access to superm
 
 The goal of this project is to understand:
 - How widespread food deserts are  
-- Who is most affected  
+- Who is most affected
 - What factors contribute to food access inequality  
 
 ---
 
 ## 📊 Key Visualizations
 
-### 1. Distribution of Food Desert Tracts
+### 1. Distribution of Food Desert Tract
 ![Food Desert Census Plot](fooddesertcensusplot.png)
 
 **Insight:**
